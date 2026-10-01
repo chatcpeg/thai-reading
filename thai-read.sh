@@ -10,4 +10,5 @@ if [ -z "$PY" ]; then
   done
 fi
 if [ -z "$PY" ]; then echo "Python 3.8+ not found (set PYTHON=/path/to/python)" >&2; exit 127; fi
+if [ $# -eq 0 ]; then set -- --menu; fi
 PYTHONUTF8=1 exec "$PY" "$HERE/thai_read.py" "$@"

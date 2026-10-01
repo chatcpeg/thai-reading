@@ -42,6 +42,12 @@ LANGS = {"Pali": "pali", "Sanskrit": "sanskrit", "Old Khmer": "khmer", "Middle K
          "French": "french", "Japanese": "japanese", "Arabic": "arabic", "Tamil": "tamil", "Mon": "mon",
          "Burmese": "burmese", "Dutch": "dutch", "Hindi": "hindi"}
 COMMON_RANK = 2500
+# readings found wrong on review (kept out of thai_readings.txt, listed in suspect_readings.tsv)
+KNOWN_BAD = {
+    "ภาพถ่าย": "Wiktionary adds a linking syllable (พาบ-พะ-ถ่าย); said พาบ-ถ่าย",
+    "พุทธศาสนิกชน": "Wiktionary reading differs from the Royal Society (พุด-ทะ-สาด-สะ-หนิก-กะ-ชน)",
+    "ศาสนสถาน": "Wiktionary reading differs from the Royal Society (สาด-สะ-หนะ-สะ-ถาน)",
+}
 
 
 def fetch(name):
@@ -200,7 +206,9 @@ def main():
                 e["bound"] = r
             r = ""
         why = sanity(w, r) if r else ""
-        if why and e["alt"]:                               # the other Wiktionary edition may have it right
+        if w in KNOWN_BAD:
+            why = KNOWN_BAD[w]
+        if why and e["alt"] and w not in KNOWN_BAD:        # the other Wiktionary edition may have it right
             for alt in e["alt"]:
                 if not alt.strip("-") == alt or sanity(w, alt):
                     continue

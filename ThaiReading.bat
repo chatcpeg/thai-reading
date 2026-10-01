@@ -7,7 +7,7 @@ rem AI agents / scripts: call  python thai_read.py ...  directly (see AGENTS.md)
 rem Needs Python 3.8+ (py launcher or python on PATH). Standard library only.
 rem Set THAI_READ_NOPAUSE=1 to never wait for a key.
 setlocal
-for /f "tokens=2 delims=:." %%a in ('chcp ^<nul') do set "OLDCP=%%a"
+(for /f "tokens=2 delims=:." %%a in ('chcp') do set "OLDCP=%%a") <nul
 set "OLDCP=%OLDCP: =%"
 chcp 65001 >nul <nul
 set "HERE=%~dp0"
@@ -19,13 +19,18 @@ if not defined PY goto :nopython
 if "%~1"=="" goto :menu
 rem files only (drag and drop) -> wait for a key at the end so the window can be read
 set "DROP=1"
-for %%f in (%*) do call :checkarg %%f
+:scan
+if "%~1"=="" goto :scanned
+call :checkarg %1
+shift
+goto :scan
+:scanned
 %PY% "%HERE%thai_read.py" %*
 set "RC=%ERRORLEVEL%"
 if "%DROP%"=="1" if not defined THAI_READ_NOPAUSE pause
 goto :done
 :menu
-%PY% "%HERE%thai_read.py"
+%PY% "%HERE%thai_read.py" --menu
 set "RC=%ERRORLEVEL%"
 goto :done
 :nopython

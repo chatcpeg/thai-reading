@@ -39,6 +39,8 @@ COMMON_RANK = 2500                     # data/common_words.txt holds this many (
 TOP_FREQUENT = 400                     # very frequent words never take a compound (bound) form: คุณ, ราคา ...
 # words that follow another word Thai-style (head first): ประเทศ+ไทย = ประ-เทด-ไท, no linking syllable
 NOT_SAMAS_HEAD = {"ไทย", "จีน", "ลาว", "ญวน", "เขมร", "พม่า", "มอญ"}
+# everyday words that really do head Pali/Sanskrit compounds (พุทธ+ศาสนา, ราช+ทูต, บรม+ราช, ธรรม+ชาติ)
+SAMAS_HEADS = {"พุทธ", "ราช", "บรม", "ธรรม"}
 # generated words are wrapped in noncharacters U+FDD0/U+FDD1 so the dictionary never respells them again
 # (2019 = สองพันสิบเก้า, not สองพัน-สิบ-ก้าว); the same marks in the INPUT are removed first.
 NUM_OPEN, NUM_CLOSE = "﷐", "﷑"
@@ -283,6 +285,7 @@ def numbers_to_words(text, abbrev=None, mark=False):
     t = re.sub(r"(\d)\.-(?=\s|$|[฀-๿])", r"\1", t)
     # dates: yyyy-mm-dd, d/m/yyyy, d.m.yyyy (a sentence-final "." is allowed), d/m/yy
     t = _sub(r"(?<![\d./-])(\d{4})-(\d{2})-(\d{2})(?![\d-])", lambda m: MD(m.group(3), m.group(2), m.group(1)), t)
+    t = _sub(r"(?<![\d./-])(\d{1,2})-(\d{1,2})-(\d{4})(?![\d-])", lambda m: MD(m.group(1), m.group(2), m.group(3)), t)
     t = _sub(r"(?<![\d.:/])(\d{1,2})([./])(\d{1,2})\2(\d{4}|\d{2})(?![\d/]|\.\d)",
              lambda m: MD(m.group(1), m.group(3), m.group(4)), t)
     # ratios / scale: 1:50,000 · อัตราส่วน 1:10 -> ต่อ
@@ -290,8 +293,33 @@ def numbers_to_words(text, abbrev=None, mark=False):
         "%s ต่อ %s" % (number_words(m.group(3)), number_words(m.group(4)))), t)
     t = _sub(r"(?<![\d.:])(\d{1,3}):(\d{1,3}(?:,\d{3})+)", lambda m: M("%s ต่อ %s" % (
         number_words(m.group(1)), number_words(m.group(2)))), t)
-    # durations h:mm:ss
-    t = _sub(r"(?<![\d.:])(\d{1,2}):(\d{2}):(\d{2})(?![\d:])", lambda m: MT(m.group(1), m.group(2), m.group(3)), t)
+    # durations: h:mm:ss, and h:mm after ใช้เวลา/ระยะเวลา/ยาว or before ชม./ชั่วโมง/นาที -> X ชั่วโมง Y นาที (not นาฬิกา)
+    def DUR(h, m, sec=None):
+        h, m = int(h), int(m)
+        if m > 59 or (sec is not None and int(sec) > 59):
+            return None
+        out = []
+        if h:
+            out.append("%s ชั่วโมง" % num_th(h))
+        if m:
+            out.append("%s นาที" % num_th(m))
+        if sec is not None and int(sec):
+            out.append("%s วินาที" % num_th(sec))
+        return M(" ".join(out) or "ศูนย์ นาที")
+    t = _sub(r"(?<![\d.:])(\d{1,2}):(\d{2}):(\d{2})(?![\d:])", lambda m: DUR(m.group(1), m.group(2), m.group(3)), t)
+    def MSS(mi, sec):                                   # 3:45 นาที / ยาว 3:45 = minutes and seconds
+        mi, sec = int(mi), int(sec)
+        if sec > 59:
+            return None
+        parts = [x for x in (("%s นาที" % num_th(mi)) if mi else "", ("%s วินาที" % num_th(sec)) if sec else "") if x]
+        return M(" ".join(parts) or "ศูนย์ วินาที")
+    t = _sub(r"(?<![\d.:])(\d{1,2}):(\d{2})%s*(?:ชม\.|ชั่วโมง)(?![\u0E01-\u0E4E])" % W,
+             lambda m: DUR(m.group(1), m.group(2)), t)
+    t = _sub(r"(?<![\d.:])(\d{1,3}):(\d{2})%s*นาที(?![\u0E01-\u0E4E])" % W, lambda m: MSS(m.group(1), m.group(2)), t)
+    t = re.sub(r"(ใช้เวลา|ระยะเวลา)(%s*)(\d{1,2}):(\d{2})(?![\d:])" % W,
+               lambda m: m.group(1) + (m.group(2) or " ") + (DUR(m.group(3), m.group(4)) or m.group(0)), t)
+    t = re.sub(r"(ความยาว|ยาว)(%s*)(\d{1,3}):(\d{2})(?![\d:])" % W,
+               lambda m: m.group(1) + (m.group(2) or " ") + (MSS(m.group(3), m.group(4)) or m.group(0)), t)
     # time ranges 09.00 น. - 12.00 น. / 10:00-16:00
     TT = r"(\d{1,2})([:.])(\d{2})(%s*น\.)?" % W
     t = _sub(r"(?<![\d.:])%s%s*[-–]%s*(\d{1,2})([:.])(\d{2})(?![\d.:])(%s*น\.)?" % (TT, W, W, W), lambda m: (
@@ -302,17 +330,29 @@ def numbers_to_words(text, abbrev=None, mark=False):
     t = _sub(r"(?<![\d.:])(\d{1,2}):(\d{2})(?![\d:,])(%s*น\.)?" % W, lambda m: MT(m.group(1), m.group(2)), t)
     t = _sub(r"(?<![\d.:])(\d{1,2})\.(\d{2})%s*น\." % W, lambda m: MT(m.group(1), m.group(2)), t)
     # phone numbers: 0x-xxx-xxxx, 0xx-xxxxxx, 0x-xxxx-xxxx, +66 ..., after โทร/สายด่วน (even with an agency acronym)
-    t = _sub(r"(?<![\d,.])(?:\+66[ -]?|0)\d{1,2}(?:[ -]?\d){6,8}(?![\d.,])", lambda m: M(digits_words(m.group(0))), t)
-    t = _sub(r"((?:โทร(?:ศัพท์)?|สายด่วน|หมายเลข)\.?%s*(?:[%s]{2,6}\.?%s*)?)(\d[\d-]*\d|\d)" % (W, CONS, W),
-             lambda m: m.group(1) + M(digits_words(m.group(2))), t)
-    t = _sub(r"(?<![\d,.])0\d+(?![\d.,])", lambda m: M(digits_words(m.group(0))), t)
+    def PHONE(m):
+        digits = re.sub(r"\D", "", m.group(0).replace("+66", "0"))
+        return M(digits_words(m.group(0).replace("(", "").replace(")", " "))) if 9 <= len(digits) <= 10 else None
+    t = _sub(r"(?<![\d,.])(?:\+66[ -]?\d|\(0\d{1,2}\)|0)[\d \-]{7,13}\d(?![\d.,])", PHONE, t)
+    t = _sub(r"((?:โทร(?:ศัพท์)?|ติดต่อ|สายด่วน|หมายเลข)\.?%s*(?:[%s]{2,6}\.?%s*)?)(\(?\d[\d \-()]*\d|\d)(?![\d.,])" % (W, CONS, W),
+             lambda m: m.group(1) + M(digits_words(m.group(2).replace("(", "").replace(")", " "))), t)
+    # 5-digit postcodes: after ไปรษณีย์, or ending an address (จังหวัด X 50200 / กรุงเทพ 10200)
+    t = re.sub(r"((?:รหัสไปรษณีย์|ไปรษณีย์)%s*)(\d{5})(?!\d)" % W, lambda m: m.group(1) + M(digits_words(m.group(2))), t)
+    t = re.sub(r"((?:จังหวัด%s*[\u0E01-\u0E4E]+|กรุงเทพ(?:มหานคร)?)%s+)(\d{5})(?![\d.,])(?!%s*[\u0E01-\u0E4E])" % (W, W, W),
+               lambda m: m.group(1) + M(digits_words(m.group(2))), t)
+    # a leading 0 means digits (รหัส 007) - but not a zero-padded day in a range (08-10 ม.ค.)
+    t = _sub(r"(?<![\d,.])0\d+(?![\d.,])(?!%s*[-–]%s*\d)" % (W, W), lambda m: (
+        None if re.search(r"\d%s*[-–]%s*$" % (W, W), t[max(0, m.start() - 6):m.start()]) else M(digits_words(m.group(0)))), t)
     # scores after ชนะ/แพ้/เสมอ: 3-1 -> สาม ต่อ หนึ่ง
     t = re.sub(r"(ชนะ|แพ้|เสมอ|สกอร์)(%s*)(\d{1,3})%s*[-–]%s*(\d{1,3})(?!\d)" % (W, W, W),
                lambda m: m.group(1) + (m.group(2) or " ") + M("%s ต่อ %s" % (num_th(m.group(3)), num_th(m.group(4)))), t)
     # 99/1, ฉบับที่ 3/2567 -> ทับ · บาท/คน, กม./ชม. -> ต่อ
     t = _sub(r"(?<![\d/])(%s)/(%s)(?![\d/])" % (N, N), lambda m: M("%s ทับ %s" % (
         number_words(m.group(1)), number_words(m.group(2)))), t)
-    t = re.sub(r"(?<=[ก-๎.])/(?=[ก-ฮ])", " ต่อ ", t)
+    # "/" is ต่อ only between a unit and a per-unit word (บาท/คน, กิโลเมตร/ชั่วโมง) - not ชาย/หญิง, ไป/กลับ, และ/หรือ
+    units = r"บาท|ดอลลาร์|เหรียญ|คน|ท่าน|กิโลเมตร|กม\.|เมตร|กิโลกรัม|กก\.|ลิตร|ชั่วโมง|ชม\.|นาที|ตารางเมตร|ตร\.ม\."
+    per = r"คน|ท่าน|วัน|คืน|ครั้ง|ชั่วโมง|ชม\.|นาที|เดือน|ปี|ห้อง|ชิ้น|ใบ|ที่|เที่ยว|กิโลกรัม|กก\.|ลิตร|กิโลเมตร|กม\.|ตารางเมตร|คัน|ลำ"
+    t = re.sub(r"(%s)/(?=(?:%s)(?![ก-๎]))" % (units, per), r"\1 ต่อ ", t)
     # ranges and percentages: 10-20% · -1.25% · 1,500-2,000 · -5
     t = _sub(r"(?<![\d.,])(%s)%s*%%?%s*[-–]%s*(%s)%s*%%" % (N, W, W, W, N, W), lambda m: "%s %s %s เปอร์เซ็นต์" % (
         M(number_words(m.group(1))), M("ถึง"), M(number_words(m.group(2)))), t)
@@ -420,8 +460,14 @@ class Reader:
     def reload_my(self):
         self.my = {k.replace(" ", ""): v for k, v in _read_pairs(self.my_file).items()}
         # single letters (ก = กอ, ว = วอ) would split real words (ราชวราราม -> ราช+ว(วอ)+...)
-        self.words = {w for w in set(self.dict) | set(self.pali) | self.keep
-                      if len(w) > 1 and RUN.fullmatch(w)} | {w for w in self.my if RUN.fullmatch(w)}
+        # letter-name entries (ยส = ยอ-สอ, กทม = กอ-ทอ-มอ) are abbreviations, not words: they would match inside
+        # real words (ราชบัณฑิตยสถาน). Bound-only stems (วร, ทัศน) are words for splitting, read as written.
+        letters = re.compile("^[%s]+$" % CONS)
+        names = re.compile("^(?:[%s]อ-)*[%s]อ$" % (CONS, CONS))
+        self.words = {w for w in set(self.dict) | set(self.pali) | self.keep | set(self.bound)
+                      if len(w) > 1 and RUN.fullmatch(w)
+                      and not (letters.match(w) and names.match(self.dict.get(w, "")))} \
+            | {w for w in self.my if RUN.fullmatch(w)}
         self.maxlen = max(len(w) for w in self.words)
 
     # ---- word classes
@@ -511,12 +557,18 @@ class Reader:
         พระ + X uses X's bound form (พระพุทธ + ศาสนา = พระ-พุด-ทะ-สาด-สะ-หนา)."""
         if tok in self.keep or tok in self.my or nxt in NOT_SAMAS_HEAD or not self.samas_origin(nxt):
             return None
+        if nxt.startswith("พระ"):                                    # ยาม+พระอาทิตย์, ฐาน+พระประธาน: Thai order
+            return None
         if not (self.pos.get(nxt, set()) & {"noun", "name"}):     # อากาศ+สบาย (adv), คุณ+สามารถ (verb): Thai order
             return None
         head, core = "", tok
         if tok not in self.bound and tok.startswith("พระ") and tok[3:] in self.bound:
             head, core = "พระ-", tok[3:]
-        if core not in self.bound or not self.samas_origin(core) or self.rank.get(core, 10 ** 9) < TOP_FREQUENT:
+        if core not in self.bound or not self.samas_origin(core):
+            return None
+        # whether a linking syllable is said depends on the word pair (ยาม+พระ no, อภัย+มณี no, พุทธ+ศาสนา yes):
+        # only the known compound heads get it; everything else stays as written
+        if core not in SAMAS_HEADS:
             return None
         b = self._restore_keep(core, self.bound[core])
         if plain(b) == plain(self.dict.get(core, core)):
@@ -557,6 +609,10 @@ class Reader:
                     changes.append({"word": chunk, "reading": pr, "source": "pali-rule", "why": "pali"})
                     continue
             toks = self.segment(chunk)
+            if len(toks) > 1:
+                # a rare piece of 1-3 letters inside a longer run is most likely a wrong split of a word the dictionary
+                # does not have (รา+ชวร in ราชวร...): treat it as unknown so it and its neighbours stay as written
+                toks = [(t, kn and not (len(t) <= 3 and not self.is_common(t) and t not in self.my)) for t, kn in toks]
             parts = []                                          # (text, converted?)
             for k, (tok, known) in enumerate(toks):
                 nxt = toks[k + 1] if k + 1 < len(toks) else None
@@ -573,9 +629,10 @@ class Reader:
                         if rn and b.split("-")[-1] == rn and rn.endswith("ะ") and "-" in b:
                             b = b.rsplit("-", 1)[0]
                         r, src, why = b, "wiktionary-bound", "compound"
-                    elif r and self.samas_origin(nxt[0]) and nxt[0] not in NOT_SAMAS_HEAD and \
-                            len(plain(r)) < len(tok) and self.samas_origin(tok):
-                        r = None          # a free form that drops letters before a compound part (ภูมิ+พล) -> as written
+                    elif r and (tok in self.bound or (tok.startswith("พระ") and tok[3:] in self.bound)):
+                        # it could be the first part of a compound but we cannot tell: never its free form, which
+                        # would drop the linking syllable if it is one (บรม+ราชานุสาวรีย์, ภูมิ+พล) -> as written
+                        r = None
                 if r:
                     parts.append((r, True))
                     changes.append({"word": tok, "reading": r, "source": src, "why": why})
@@ -602,7 +659,10 @@ class Reader:
         fields = body.split("\t")
         out = []
         for i, f in enumerate(fields):
-            wanted = (i in cols) if cols is not None else not looks_like_path(f)
+            if cols is not None:
+                wanted = i in cols
+            else:
+                wanted = len(fields) == 1 or not looks_like_path(f)       # a plain line is always text
             out.append(self.read(f, mode, numbers)[0] if wanted and THAI_ANY.search(f) else f)
         return "\t".join(out) + end
 
@@ -656,10 +716,16 @@ class Reader:
         else:
             lines = raw.splitlines(True)
             cols = None
-            if keys and ext_l == ".tsv" and lines:
-                header = lines[0].rstrip("\r\n").split("\t")
-                cols = {i for i, h in enumerate(header) if h in keys or str(i) in keys}
+            if ext_l == ".tsv" and lines:                       # the header row is names, never converted
+                if keys:
+                    header = lines[0].rstrip("\r\n").split("\t")
+                    cols = {i for i, h in enumerate(header) if h in keys or str(i) in keys}
                 new = [lines[0]] + [self.convert_line(l, mode, numbers, cols) for l in lines[1:]]
+            elif ext_l in (".ass", ".ssa"):                    # only the Text field (after the 9th comma) of events
+                new = []
+                for l in lines:
+                    m = re.match(r"^((?:Dialogue|Comment):(?:[^,]*,){9})(.*?)(\r?\n)?$", l)
+                    new.append(m.group(1) + self.read(m.group(2), mode, numbers)[0] + (m.group(3) or "") if m else l)
             else:
                 new = [self.convert_line(l, mode, numbers) for l in lines]
             text = "".join(new)
@@ -692,12 +758,15 @@ class Reader:
 
 
 def looks_like_path(s):
-    """a file path / URL / file name with no spaces (ภาพ/วัด01.jpg, https://...) - never converted"""
-    s = s.strip()
-    if not s or re.search(r"\s", s):
+    """a file path / URL (ภาพ/วัด 01.jpg, D:\\Videos\\x.mp4, https://...) - never converted. Not a path: Thai text with
+    digits after a dot (พ.ศ.2560, 35.50) or a slash between words/numbers (บาท/คน, 15/01/2567)."""
+    s = MARKUP.sub("", s).strip()
+    if not s:
         return False
-    return bool(re.match(r"^(?:https?://|[A-Za-z]:[\\/]|[\\/])", s) or re.search(r"[\\/]", s)
-                or re.search(r"\.[A-Za-z0-9]{2,4}$", s))
+    if re.match(r"^(?:[a-z][a-z0-9+.-]*://|[A-Za-z]:[\\/]|[\\/]|\.{1,2}[\\/])", s):
+        return True
+    ext = re.search(r"\.[A-Za-z][A-Za-z0-9]{1,4}$", s)
+    return bool(ext and (re.search(r"[\\/]", s) or not re.search(r"\s", s)))
 
 
 # ------------------------------------------------------------------ CLI
@@ -763,11 +832,13 @@ def main(argv=None):
     ap.add_argument("--no-numbers", action="store_true", help="leave digits, times and abbreviations alone")
     ap.add_argument("--keys", help="JSON keys or TSV header names (or column numbers) to convert, comma separated")
     ap.add_argument("--teach", nargs=2, metavar=("WORD", "READING"))
+    ap.add_argument("--menu", action="store_true", help="interactive menu (the default when run with no arguments "
+                                                          "from a terminal)")
     ap.add_argument("--version", action="version", version=__version__)
     a = ap.parse_args(argv)
-    modes = sum(1 for x in (a.text is not None, a.stdin, bool(a.teach), bool(a.files)) if x)
+    modes = sum(1 for x in (a.text is not None, a.stdin, bool(a.teach), bool(a.files), a.menu) if x)
     if modes > 1:
-        ap.error("use only one of: --text, --stdin, --teach, files")
+        ap.error("use only one of: --text, --stdin, --teach, --menu, files")
     if a.json and (a.files or a.teach):
         ap.error("--json works with --text or --stdin")
     if a.keys and not a.files:
@@ -794,13 +865,16 @@ def main(argv=None):
             except UnicodeDecodeError:
                 print("error: stdin is not UTF-8", file=sys.stderr)
                 return 1
-        text = text.lstrip("﻿")
+        text = text.lstrip("\ufeff")
+        lines = re.split(r"\r?\n", text)
+        if len(lines) > 1 and lines[-1] == "":
+            lines.pop()                                     # one reading per input line - only "\n" splits lines
         outs = []
-        for line in text.splitlines() or [""]:
+        for line in lines:
             r, ch = R.read(line, a.mode, numbers=numbers)
             outs.append({"input": line, "reading": r, "changes": ch})
-        if a.json:
-            print(json.dumps(outs[0] if len(outs) == 1 else outs, ensure_ascii=False))
+        if a.json:          # --stdin: always a list; --text: one object (a list if the text has several lines)
+            print(json.dumps(outs[0] if (a.text is not None and len(outs) == 1) else outs, ensure_ascii=False))
         else:
             print("\n".join(o["reading"] for o in outs))
         return 0
@@ -813,7 +887,7 @@ def main(argv=None):
             if keys and ext not in (".json", ".jsonl", ".tsv"):
                 print("[warn] %s: --keys only applies to .json / .jsonl / .tsv - converting every Thai text" % p,
                       file=sys.stderr)
-            if ext not in (".txt", ".srt", ".tsv", ".json", ".jsonl", ".md", ".vtt", ".ass", ""):
+            if ext not in (".txt", ".srt", ".tsv", ".json", ".jsonl", ".md", ".vtt", ".ass", ".ssa", ""):
                 print("[warn] %s: unknown type - every Thai text in it is converted as plain text" % p, file=sys.stderr)
             stem, e2 = os.path.splitext(os.path.basename(p))
             folder = a.out or os.path.dirname(os.path.abspath(p))
@@ -831,6 +905,9 @@ def main(argv=None):
                 print("[error] %s: %s" % (p, e), file=sys.stderr)
                 rc = 1
         return rc
+    if not a.menu and not sys.stdin.isatty():
+        print("error: no input - use --text, --stdin or file names (or --menu for the interactive menu)", file=sys.stderr)
+        return 2
     return _menu(R, a.mode, numbers)
 
 

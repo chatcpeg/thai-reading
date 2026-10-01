@@ -163,6 +163,44 @@ class Round2(unittest.TestCase):
         self.assertIn("หนึ่งร้อย", out)
 
 
+class Round3(unittest.TestCase):
+    """third review: compounds, splits, phones, postcodes, durations, slashes"""
+    def test_thai_order_phrases_get_no_linking_syllable(self):
+        for s_ in ("ชมวิวยามพระอาทิตย์ตก", "ประวัติพระธาตุดอยสุเทพ", "บนฐานพระประธาน", "อนาคตประเทศไทย", "พระอภัยมณี"):
+            out = r(s_)
+            for bad in ("ยา-มะ", "หวัด-ติ", "ถา-นะ", "คด-ตะ", "ไพ-ยะ"):
+                self.assertNotIn(bad, out, s_)
+
+    def test_royal_temple_titles_not_split_wrongly(self):
+        for s_ in ("วัดสระเกศราชวรมหาวิหาร", "วัดพระธาตุดอยสุเทพราชวรวิหาร", "ราชบัณฑิตยสถาน", "สคริปต์ภาษาไทย"):
+            out = r(s_)
+            self.assertNotIn("ชวน", out, s_)
+            self.assertNotIn("ยอ-สอ", out, s_)
+            self.assertNotIn("สอ-คอ", out, s_)
+
+    def test_bound_heads_never_lose_syllables(self):
+        self.assertNotIn("บอ-รม-ราชา", r("พระบรมราชานุสาวรีย์"))
+        self.assertNotIn("พาบ-พะ", r("ภาพถ่าย"))
+
+    def test_phones_postcodes(self):
+        self.assertIn("ศูนย์, สอง สอง ห้า ศูนย์, ห้า ห้า ศูนย์ ศูนย์", r("โทร 0 2250 5500"))
+        self.assertIn("ศูนย์, สอง สอง ห้า ศูนย์, ห้า ห้า ศูนย์ ศูนย์", r("ติดต่อ 0-2250-5500"))
+        self.assertIn("ศูนย์ สอง, หนึ่ง สอง สาม, สี่ ห้า หก เจ็ด", r("(02) 123-4567"))
+        self.assertIn("ห้า ศูนย์ สอง ศูนย์ ศูนย์", r("จ.เชียงใหม่ 50200"))
+        self.assertIn("หนึ่ง ศูนย์ สอง ศูนย์ ศูนย์", r("ไปรษณีย์ 10200"))
+        self.assertIn("ห้าหมื่นสองร้อย บาท", r("ราคา 50200 บาท"))
+
+    def test_durations_dates_slashes(self):
+        self.assertEqual(r("ระยะเวลา 2:15:30"), "ระยะเวลา สอง ชั่วโมง สิบห้า นาที สามสิบ วินาที")
+        self.assertEqual(r("ใช้เวลา 1:30 ชม."), "ใช้เวลา หนึ่ง ชั่วโมง สามสิบ นาที")
+        self.assertEqual(r("คลิปยาว 3:45 นาที"), "คลิปยาว สาม นาที สี่สิบห้า วินาที")
+        self.assertEqual(r("12-10-2567"), "สิบสอง ตุลาคม สองพันห้าร้อยหกสิบเจ็ด")
+        self.assertIn("แปด ถึง สิบ มกราคม", r("วันที่ 08-10 ม.ค."))
+        for s_ in ("และ/หรือ", "ตั๋วไป/กลับ", "ชาย/หญิง", "ไทย/ต่างชาติ"):
+            self.assertNotIn("ต่อ", r(s_), s_)
+        self.assertIn("กิโลเมตร ต่อ ชั่วโมง", r("80 กม./ชม."))
+
+
 class Teach(unittest.TestCase):
     def test_teach_wins_even_inside_longer_words(self):
         rr = T.Reader(my_file=os.path.join(tempfile.mkdtemp(), "my.txt"))
@@ -248,6 +286,26 @@ class Files(unittest.TestCase):
         dst, _ = R.convert_file(p)
         self.assertEqual(read_bytes(dst).decode("utf-8"), BOM + '{\r\n    "th": "ราด-ชะ-กาน"\r\n}\r\n')
 
+    def test_plain_lines_with_slash_or_dot_are_converted(self):
+        p = write_bytes(os.path.join(self.d, "s.txt"),
+                        "สร้างเมื่อพ.ศ.2560\nค่าเข้าชม50บาท/คน\nราคา35.50\n<i>พระปรางค์สูงตระหง่าน</i>\n".encode("utf-8"))
+        dst, n = R.convert_file(p)
+        self.assertEqual(n, 4)
+        self.assertIn("<i>พระ-ปราง-สูง-ตระ-หง่าน</i>", read_bytes(dst).decode("utf-8"))
+
+    def test_paths_with_spaces_kept_and_tsv_header_kept(self):
+        src = json.dumps({"img": "ภาพ/วัด อรุณ 01.jpg", "vo": "อุโบสถ"}, ensure_ascii=False)
+        p = write_bytes(os.path.join(self.d, "y.json"), src.encode("utf-8"))
+        self.assertEqual(json.loads(read_bytes(R.convert_file(p)[0]).decode("utf-8"))["img"], "ภาพ/วัด อรุณ 01.jpg")
+        p = write_bytes(os.path.join(self.d, "z.tsv"), "ภาพ1\tเสียงพากย์\n01\tวัด 2 หลัง\n".encode("utf-8"))
+        self.assertTrue(read_bytes(R.convert_file(p)[0]).decode("utf-8").startswith("ภาพ1\tเสียงพากย์\n"))
+
+    def test_ass_only_text_field(self):
+        line = "Dialogue: 0,0:00:01.00,0:00:03.50,Default,,0,0,0,,{" + BS + "an8}พระอุโบสถ 2 หลัง\n"
+        p = write_bytes(os.path.join(self.d, "x.ass"), ("[Events]\n" + line).encode("utf-8"))
+        out = read_bytes(R.convert_file(p)[0]).decode("utf-8")
+        self.assertIn("Dialogue: 0,0:00:01.00,0:00:03.50,Default,,0,0,0,,{" + BS + "an8}พระ-อุ-โบ-สด สอง หลัง", out)
+
     def test_no_numbers_in_files(self):
         p = write_bytes(os.path.join(self.d, "n.txt"), "ราคา 100 บาท อุโบสถ\n".encode("utf-8"))
         dst, _ = R.convert_file(p, numbers=False)
@@ -292,7 +350,14 @@ class Cli(unittest.TestCase):
         self.assertEqual(self.run_cli(["--stdin"], stdin="อุโบสถ".encode("cp874"))[0], 1)
         self.assertEqual(self.run_cli(["--text", "x", "a.txt"])[0], 2)
         self.assertEqual(self.run_cli(["--teach", "ต่างๆ", "ต่าง-ต่าง"])[0], 1)
-        self.assertEqual(self.run_cli([], stdin=b"")[0], 0)            # menu on EOF exits cleanly
+        self.assertEqual(self.run_cli([], stdin=b"")[0], 2)            # no args + no terminal: error, not a menu
+        self.assertEqual(self.run_cli(["--menu"], stdin=b"")[0], 0)    # menu on EOF exits cleanly
+
+    def test_stdin_json_is_always_a_list_and_only_newlines_split(self):
+        rc, out, _ = self.run_cli(["--stdin", "--json"], stdin="อุโบสถ\n".encode("utf-8"))
+        self.assertIsInstance(json.loads(out), list)
+        rc, out, _ = self.run_cli(["--stdin", "--json"], stdin="ก ข\nค\x0cง\n".encode("utf-8"))
+        self.assertEqual(len(json.loads(out)), 2)                      # only "\n" splits lines
 
     def test_missing_data_fails_loudly(self):
         with self.assertRaises(FileNotFoundError):
