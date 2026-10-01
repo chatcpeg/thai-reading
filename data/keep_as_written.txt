@@ -1,0 +1,4 @@
+# Words the reader leaves AS WRITTEN even though the dictionary respells them.
+# Add a word here when a voice model reads the respelling worse than the original spelling.
+# One word per line; text after # is a note.
+ทรง        # respelled "ซง" was heard as "สอง" on MiniMax H3 (2026-09-28); the model reads ทรง correctly as written

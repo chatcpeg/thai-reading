@@ -1,0 +1,5 @@
+# My readings - they win over every other source (dictionary, keep list).
+# Format:  word = read-ing     (syllables joined by "-", style C)   e.g.
+#   ธรรมเนียม = ทำ-เนียม
+#   พระปรางค์ประธาน = พระ-ปราง-ประ-ทาน      (a whole phrase forces the whole span)
+# Add from the command line:  python thai_read.py --teach ธรรมเนียม ทำ-เนียม

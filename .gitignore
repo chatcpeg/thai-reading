@@ -1,0 +1,5 @@
+_raw/
+__pycache__/
+*.pyc
+*_อ่าน.*
+.pytest_cache/

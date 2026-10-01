@@ -1,0 +1,7 @@
+thai-reading
+Code (thai_read.py, tools/, tests/, ThaiReading.bat, thai-read.sh): MIT License - see LICENSE.
+Data (data/): NOT under the MIT License - see data/LICENSE:
+  - thai_readings.txt, thai_readings_full.tsv, thai_bound_forms.txt, thai_origins.txt, suspect_readings.tsv,
+    pali_thai_script.txt: CC BY-SA 4.0, derived from Wiktionary (by Wiktionary contributors) via wiktextract/kaikki.org
+  - common_words.txt: derived from the Thai National Corpus word frequencies published by PyThaiNLP under CC0 1.0
+  - abbreviations.txt, keep_as_written.txt, my_readings.txt: original, CC BY-SA 4.0
