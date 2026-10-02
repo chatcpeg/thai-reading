@@ -102,17 +102,30 @@ class Numbers(unittest.TestCase):
         self.assertEqual(r("12.10.2560"), "สิบสอง ตุลาคม สองพันห้าร้อยหกสิบ")
 
     def test_era_abbreviations_full_name(self):
-        # owner 02-10: พ.ศ. is read พุด-ทะ-สัก-กะ-หราด (full name, ending หราด), not "พอ-สอ"
-        self.assertEqual(r("พ.ศ. 2560"), "พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ")
-        self.assertEqual(r("สร้างเมื่อพ.ศ.2560"), "สร้างเมื่อ พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ")
-        self.assertEqual(r("ค.ศ. 1782"), "คริด-สัก-กะ-หราด หนึ่งพันเจ็ดร้อยแปดสิบสอง")
-        self.assertEqual(r("จ.ศ. 1200"), "จุน-ละ-สัก-กะ-หราด หนึ่งพันสองร้อย")
+        # พ.ศ. is said in full (never "พอ-สอ"): the era NAME is inserted and spaced off. By default it stays as
+        # written (keep_as_written.txt) because MiniMax H3 says "หราด" right only from the written word (02-10)
+        self.assertEqual(r("พ.ศ. 2560"), "พุทธศักราช สองพันห้าร้อยหกสิบ")
+        self.assertEqual(r("สร้างเมื่อพ.ศ.2560"), "สร้างเมื่อ พุทธศักราช สองพันห้าร้อยหกสิบ")
+        self.assertEqual(r("ค.ศ. 1782"), "คริสต์ศักราช หนึ่งพันเจ็ดร้อยแปดสิบสอง")
+        self.assertEqual(r("จ.ศ. 1200"), "จุลศักราช หนึ่งพันสองร้อย")
         self.assertEqual(r("ร.ศ. 112"), "รัด-ตะ-นะ-โก-สิน-สก หนึ่งร้อยสิบสอง")
-        self.assertIn("พุด-ทะ-สัก-กะ-หราด", r("ปีพุทธศักราช 2560"))   # the written-out word gives the same reading
         # after an ellipsis / list number, and the spaced form that จ. = จังหวัด used to eat
-        self.assertEqual(r("ย้อนไปเมื่อ...พ.ศ. 2475"), "ย้อนไปเมื่อ...พุด-ทะ-สัก-กะ-หราด สองพันสี่ร้อยเจ็ดสิบห้า")
-        self.assertEqual(r("จ. ศ. 1200"), "จุน-ละ-สัก-กะ-หราด หนึ่งพันสองร้อย")
+        self.assertEqual(r("ย้อนไปเมื่อ...พ.ศ. 2475"), "ย้อนไปเมื่อ...พุทธศักราช สองพันสี่ร้อยเจ็ดสิบห้า")
+        self.assertEqual(r("จ. ศ. 1200"), "จุลศักราช หนึ่งพันสองร้อย")
         self.assertEqual(r("ก.ค.ศ. ประชุม"), "ก.ค.ศ. ประชุม")              # an organisation, not an era
+
+    def test_era_reading_when_not_kept(self):
+        # another TTS: take the era names out of keep_as_written.txt -> the dictionary reading (style C)
+        d = tempfile.mkdtemp()
+        for f in os.listdir(T.DATA):
+            if os.path.isfile(os.path.join(T.DATA, f)):
+                with open(os.path.join(T.DATA, f), "rb") as a, open(os.path.join(d, f), "wb") as b:
+                    b.write(a.read())
+        with open(os.path.join(d, "keep_as_written.txt"), "w", encoding="utf-8") as f:
+            f.write("ทรง\n")
+        R2 = T.Reader(data_dir=d, my_file=os.path.join(d, "my.txt"))
+        self.assertEqual(R2.read("พ.ศ. 2560")[0], "พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ")
+        self.assertEqual(R2.read("ค.ศ. 1782")[0], "คริด-สัก-กะ-หราด หนึ่งพันเจ็ดร้อยแปดสิบสอง")
 
     def test_titles_not_respelled_as_words(self):
         # รศ / นพ are also dictionary words (รด, นบ); as titles they are said in full

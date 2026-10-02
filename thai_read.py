@@ -7,7 +7,7 @@ reading; keep the correct spelling for subtitles. Rule of the tool: when it is n
 so the output is never worse than the input.
 
     ตระหง่าน -> ตระ-หง่าน    อุโบสถ -> อุ-โบ-สด    ค่าธรรมเนียม -> ค่า-ทำ-เนียม    ราชการ -> ราด-ชะ-กาน
-    พ.ศ. 2560 -> พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ    08:30 น. -> แปด นาฬิกา สามสิบ นาที
+    พ.ศ. 2560 -> พุทธศักราช สองพันห้าร้อยหกสิบ (never "พอ-สอ")    08:30 น. -> แปด นาฬิกา สามสิบ นาที
     35.50 บาท -> สามสิบห้า จุด ห้า ศูนย์ บาท
 
 Usage (Python 3.8+, standard library only):
@@ -46,11 +46,11 @@ SAMAS_HEADS = {"พุทธ", "ราช", "บรม", "ธรรม"}
 # (2019 = สองพันสิบเก้า, not สองพัน-สิบ-ก้าว); the same marks in the INPUT are removed first.
 NUM_OPEN, NUM_CLOSE = "﷐", "﷑"
 MARKUP = re.compile(r"(<[^<>\r\n]*>|\{\\[^{}\r\n]*\})")      # <font ...>, {\an8} in subtitles - never touched
-# era abbreviations -> the full era name read aloud (readings: Royal Institute dictionary / Wiktionary)
-ERAS = (("พ", "พุด-ทะ-สัก-กะ-หราด"),      # พ.ศ. พุทธศักราช
-        ("ค", "คริด-สัก-กะ-หราด"),        # ค.ศ. คริสต์ศักราช
-        ("จ", "จุน-ละ-สัก-กะ-หราด"),      # จ.ศ. จุลศักราช
-        ("ร", "รัด-ตะ-นะ-โก-สิน-สก"))     # ร.ศ. รัตนโกสินทรศก
+# era abbreviations -> the full era name, said in full (พ.ศ. = พุด-ทะ-สัก-กะ-หราด, never "พอ-สอ"). The NAME is
+# inserted, spaced off, and then read like any other word: the dictionary gives พุด-ทะ-สัก-กะ-หราด, unless the word
+# is in data/keep_as_written.txt - which it is by default, because MiniMax H3 says หราด right only from the
+# written word (every respelling came out "ราด", owner listening test 2026-10-02).
+ERAS = (("พ", "พุทธศักราช"), ("ค", "คริสต์ศักราช"), ("จ", "จุลศักราช"), ("ร", "รัตนโกสินทรศก"))
 
 # ------------------------------------------------------------------ comparing spelling and reading
 
@@ -277,11 +277,11 @@ def numbers_to_words(text, abbrev=None, mark=False):
 
     W, N = WS, NUM
     t = text.translate(_THAI_DIGITS).replace(NUM_OPEN, "").replace(NUM_CLOSE, "")
-    # era abbreviations are read as the full era name (พ.ศ. = พุทธศักราช = พุด-ทะ-สัก-กะ-หราด, not "พอ-สอ").
+    # era abbreviations -> the era name (see ERAS); _sub/_pad spaces it off where it touches Thai or a digit.
     # Before the abbreviation list, so "จ. ศ." is not eaten by จ. = จังหวัด. Only a consonant+dot in front blocks
     # them (ก.ค.ศ. is something else); "...พ.ศ." and "1.พ.ศ." are still eras.
     for ab, era in ERAS:
-        t = _sub(r"(?<![ก-ฮ]\.)%s\s*\.\s*ศ\s*\." % ab, lambda m, era=era: M(era), t)
+        t = _sub(r"(?<![ก-ฮ]\.)%s\s*\.\s*ศ\s*\." % ab, lambda m, era=era: era, t)
     for k, v in (abbrev or {}).items():                       # longest first (dict built sorted)
         # 1-2 letter keys (จ. ต. กม. ชม. ม.ค.) must not touch a Thai letter before them (ชีวิต. / เข้าชม. stay);
         # longer ones (กทม. กรุงเทพฯ ฯลฯ) may follow a word directly (จากกทม. ในกรุงเทพฯ)

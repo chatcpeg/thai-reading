@@ -2,3 +2,8 @@
 # Add a word here when a voice model reads the respelling worse than the original spelling.
 # One word per line; text after # is a note.
 ทรง        # respelled "ซง" was heard as "สอง" on MiniMax H3 (2026-09-28); the model reads ทรง correctly as written
+พุทธศักราช      # MiniMax H3 says "...กะ-ราด" for every respelling (หราด, หร่าด, หฺราด, หลาด); written word = "หราด" (2026-10-02)
+คริสต์ศักราช    # same ending as พุทธศักราช - kept as written for the same reason (not separately tested)
+คริสตศักราช     # same
+จุลศักราช       # same
+มหาศักราช       # same

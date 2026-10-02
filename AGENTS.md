@@ -40,8 +40,10 @@ Options: `--mode irregular|changed|all` (default `irregular` = only misleading s
   ชาย/หญิง, ไป/กลับ, และ/หรือ stay), `1:50,000` (ต่อ), `฿1,200`, `350.-`, scores after ชนะ/แพ้ (ต่อ)
 - phone numbers (02-123-4567, 053-248604, 08-1234-5678, 0 2250 5500, (02) 123-4567, +66 ...), hotlines and numbers
   with a leading 0 are read digit by digit; 5-digit postcodes after ไปรษณีย์ or ending an address too
-- era abbreviations are read as the full name: พ.ศ. -> พุด-ทะ-สัก-กะ-หราด, ค.ศ. -> คริด-สัก-กะ-หราด,
-  จ.ศ. -> จุน-ละ-สัก-กะ-หราด, ร.ศ. -> รัด-ตะ-นะ-โก-สิน-สก; plus `data/abbreviations.txt` (months, units, จ. ต. ถ. ซ., กทม., titles รศ. ผศ. ดร. นพ. ม.ร.ว., ฯลฯ, กรุงเทพฯ ...);
+- era abbreviations are said as the full name, never letter by letter: พ.ศ. -> พุทธศักราช, ค.ศ. -> คริสต์ศักราช,
+  จ.ศ. -> จุลศักราช (kept as written by default: `data/keep_as_written.txt`, because MiniMax H3 says the ending
+  "หราด" right only from the written word - take them out of that file to get พุด-ทะ-สัก-กะ-หราด for other TTS),
+  ร.ศ. -> รัด-ตะ-นะ-โก-สิน-สก; plus `data/abbreviations.txt` (months, units, จ. ต. ถ. ซ., กทม., titles รศ. ผศ. ดร. นพ. ม.ร.ว., ฯลฯ, กรุงเทพฯ ...);
   1-2 letter abbreviations only when they do not touch a Thai letter (ชีวิต. / เข้าชม. stay)
 - words are found by dictionary maximal matching (not substring search); a known word glued to unknown letters
   (part of an unknown compound) and short rare pieces of a long run are left as written; generated number words
