@@ -7,7 +7,8 @@ reading; keep the correct spelling for subtitles. Rule of the tool: when it is n
 so the output is never worse than the input.
 
     ตระหง่าน -> ตระ-หง่าน    อุโบสถ -> อุ-โบ-สด    ค่าธรรมเนียม -> ค่า-ทำ-เนียม    ราชการ -> ราด-ชะ-กาน
-    พ.ศ. 2560 -> พอ-สอ สองพันห้าร้อยหกสิบ    08:30 น. -> แปด นาฬิกา สามสิบ นาที    35.50 บาท -> สามสิบห้า จุด ห้า ศูนย์ บาท
+    พ.ศ. 2560 -> พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ    08:30 น. -> แปด นาฬิกา สามสิบ นาที
+    35.50 บาท -> สามสิบห้า จุด ห้า ศูนย์ บาท
 
 Usage (Python 3.8+, standard library only):
     python thai_read.py --text "พระปรางค์สูงตระหง่าน"          -> the reading (one line per input line)
@@ -24,7 +25,7 @@ Data: Wiktionary (CC BY-SA 4.0) + PyThaiNLP TNC frequencies (CC0) - see data/LIC
 """
 import argparse, io, json, os, re, sys
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 MY_FILE = os.environ.get("THAI_READ_MY") or os.path.join(DATA, "my_readings.txt")
@@ -45,6 +46,11 @@ SAMAS_HEADS = {"พุทธ", "ราช", "บรม", "ธรรม"}
 # (2019 = สองพันสิบเก้า, not สองพัน-สิบ-ก้าว); the same marks in the INPUT are removed first.
 NUM_OPEN, NUM_CLOSE = "﷐", "﷑"
 MARKUP = re.compile(r"(<[^<>\r\n]*>|\{\\[^{}\r\n]*\})")      # <font ...>, {\an8} in subtitles - never touched
+# era abbreviations -> the full era name read aloud (readings: Royal Institute dictionary / Wiktionary)
+ERAS = (("พ", "พุด-ทะ-สัก-กะ-หราด"),      # พ.ศ. พุทธศักราช
+        ("ค", "คริด-สัก-กะ-หราด"),        # ค.ศ. คริสต์ศักราช
+        ("จ", "จุน-ละ-สัก-กะ-หราด"),      # จ.ศ. จุลศักราช
+        ("ร", "รัด-ตะ-นะ-โก-สิน-สก"))     # ร.ศ. รัตนโกสินทรศก
 
 # ------------------------------------------------------------------ comparing spelling and reading
 
@@ -271,14 +277,17 @@ def numbers_to_words(text, abbrev=None, mark=False):
 
     W, N = WS, NUM
     t = text.translate(_THAI_DIGITS).replace(NUM_OPEN, "").replace(NUM_CLOSE, "")
+    # era abbreviations are read as the full era name (พ.ศ. = พุทธศักราช = พุด-ทะ-สัก-กะ-หราด, not "พอ-สอ").
+    # Before the abbreviation list, so "จ. ศ." is not eaten by จ. = จังหวัด. Only a consonant+dot in front blocks
+    # them (ก.ค.ศ. is something else); "...พ.ศ." and "1.พ.ศ." are still eras.
+    for ab, era in ERAS:
+        t = _sub(r"(?<![ก-ฮ]\.)%s\s*\.\s*ศ\s*\." % ab, lambda m, era=era: M(era), t)
     for k, v in (abbrev or {}).items():                       # longest first (dict built sorted)
         # 1-2 letter keys (จ. ต. กม. ชม. ม.ค.) must not touch a Thai letter before them (ชีวิต. / เข้าชม. stay);
         # longer ones (กทม. กรุงเทพฯ ฯลฯ) may follow a word directly (จากกทม. ในกรุงเทพฯ)
         short = len(re.sub("[.ฯ]", "", k)) <= 2
         before = r"(?<![฀-๿.])" if short else r"(?<![.])"
         t = _sub(before + re.escape(k) + r"(?![%s]\.)(?!\.)" % CONS, lambda m, v=v: v, t)
-    t = _sub(r"พ\s*\.\s*ศ\s*\.", lambda m: M("พอ-สอ"), t)
-    t = _sub(r"ค\s*\.\s*ศ\s*\.", lambda m: M("คอ-สอ"), t)
     t = re.sub(r"(?<=[ก-๎])(?=\d)", " ", t)          # "ปี2560" -> separate the digits
     # money: ฿1,200 -> 1,200 บาท · 350.- -> 350
     t = re.sub(r"฿%s*(%s)" % (W, N), r"\1 บาท", t)

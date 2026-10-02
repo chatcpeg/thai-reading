@@ -100,7 +100,25 @@ class Numbers(unittest.TestCase):
         self.assertEqual(r("ปี 2556-2560"), "ปี สองพันห้าร้อยห้าสิบหก ถึง สองพันห้าร้อยหกสิบ")
         self.assertEqual(r("1,500-2,000 บาท"), "หนึ่งพันห้าร้อย ถึง สองพัน บาท")
         self.assertEqual(r("12.10.2560"), "สิบสอง ตุลาคม สองพันห้าร้อยหกสิบ")
-        self.assertIn("พอ-สอ สองพันห้าร้อยหกสิบ", r("พ.ศ. 2560"))
+
+    def test_era_abbreviations_full_name(self):
+        # owner 02-10: พ.ศ. is read พุด-ทะ-สัก-กะ-หราด (full name, ending หราด), not "พอ-สอ"
+        self.assertEqual(r("พ.ศ. 2560"), "พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ")
+        self.assertEqual(r("สร้างเมื่อพ.ศ.2560"), "สร้างเมื่อ พุด-ทะ-สัก-กะ-หราด สองพันห้าร้อยหกสิบ")
+        self.assertEqual(r("ค.ศ. 1782"), "คริด-สัก-กะ-หราด หนึ่งพันเจ็ดร้อยแปดสิบสอง")
+        self.assertEqual(r("จ.ศ. 1200"), "จุน-ละ-สัก-กะ-หราด หนึ่งพันสองร้อย")
+        self.assertEqual(r("ร.ศ. 112"), "รัด-ตะ-นะ-โก-สิน-สก หนึ่งร้อยสิบสอง")
+        self.assertIn("พุด-ทะ-สัก-กะ-หราด", r("ปีพุทธศักราช 2560"))   # the written-out word gives the same reading
+        # after an ellipsis / list number, and the spaced form that จ. = จังหวัด used to eat
+        self.assertEqual(r("ย้อนไปเมื่อ...พ.ศ. 2475"), "ย้อนไปเมื่อ...พุด-ทะ-สัก-กะ-หราด สองพันสี่ร้อยเจ็ดสิบห้า")
+        self.assertEqual(r("จ. ศ. 1200"), "จุน-ละ-สัก-กะ-หราด หนึ่งพันสองร้อย")
+        self.assertEqual(r("ก.ค.ศ. ประชุม"), "ก.ค.ศ. ประชุม")              # an organisation, not an era
+
+    def test_titles_not_respelled_as_words(self):
+        # รศ / นพ are also dictionary words (รด, นบ); as titles they are said in full
+        self.assertEqual(r("รศ.ดร.สมชาย"), "รอง-สาด-ตรา-จาน ด๊อก-เต้อ สมชาย")
+        self.assertEqual(r("นพ.สมพร"), "นาย-แพด สมพร")
+        self.assertNotIn("รัด-ตะ", r("รศ.ดร.สมชาย"))                   # รองศาสตราจารย์ is not ร.ศ.
 
     def test_commas_percent_negative_phone(self):
         self.assertEqual(r("ปี 2019,2020"), "ปี สองพันสิบเก้า,สองพันยี่สิบ")
