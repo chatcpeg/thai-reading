@@ -19,16 +19,19 @@ Usage (Python 3.8+, standard library only):
     python thai_read.py                                          -> interactive menu
 Options: --mode irregular (default: only spellings that mislead) | changed (every word whose reading differs)
          | all (every dictionary word in style C) · --pali · --no-numbers · --keys a,b (JSON keys / TSV header names)
+         · --style c (default: ค่า-ทำ-เนียม) | dict (dictionary reading written solid, no "-": ค่าทำเนียม);
+           the default can be set with the environment variable THAI_READ_STYLE=dict
 Priority: data/my_readings.txt > data/keep_as_written.txt > data/thai_readings.txt (> Pali rules with --pali)
 Exit codes: 0 ok · 1 a file / stdin / --teach failed · 2 bad arguments · 3 data files missing
 Data: Wiktionary (CC BY-SA 4.0) + PyThaiNLP TNC frequencies (CC0) - see data/LICENSE. Code: MIT.
 """
 import argparse, io, json, os, re, sys
 
-__version__ = "1.3.0"
+__version__ = "1.5.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(HERE, "data")
 MY_FILE = os.environ.get("THAI_READ_MY") or os.path.join(DATA, "my_readings.txt")
+FIX_FILE = os.environ.get("THAI_READ_FIXES") or os.path.join(DATA, "voice_fixes.txt")
 PINTHU = "ฺ"
 # Thai LETTERS (consonants, vowels, tone marks) - not ฯ (0E2F), ๆ (0E46), ฿ (0E3F), digits ๐-๙, ๏ ๚ ๛
 LETTER = "ก-ฮะ-ฺเ-ๅ็-๎"
@@ -48,9 +51,13 @@ NUM_OPEN, NUM_CLOSE = "﷐", "﷑"
 MARKUP = re.compile(r"(<[^<>\r\n]*>|\{\\[^{}\r\n]*\})")      # <font ...>, {\an8} in subtitles - never touched
 # era abbreviations -> the full era name, said in full (พ.ศ. = พุด-ทะ-สัก-กะ-หราด, never "พอ-สอ"). The NAME is
 # inserted, spaced off, and then read like any other word: the dictionary gives พุด-ทะ-สัก-กะ-หราด, unless the word
-# is in data/keep_as_written.txt - which it is by default, because MiniMax H3 says หราด right only from the
-# written word (every respelling came out "ราด", owner listening test 2026-10-02).
+# is in data/keep_as_written.txt - which it is by default in style C, because MiniMax H3 says หราด right only from the
+# written word (every respelling came out "ราด", owner listening test 2026-10-02). Dictionary style writes the
+# reading solid instead: พุดทะสักกะหราด (owner 2026-10-23).
 ERAS = (("พ", "พุทธศักราช"), ("ค", "คริสต์ศักราช"), ("จ", "จุลศักราช"), ("ร", "รัตนโกสินทรศก"))
+# output styles. The data and your readings are always kept in style C; "dict" writes the same reading solid, the way a
+# dictionary prints it (ราชการ -> ราดชะกาน), so a word whose only change was the "-" (ตระ-หง่าน) stays as written.
+STYLES = {"c": "style C", "dict": "dictionary style, no -"}
 
 # ------------------------------------------------------------------ comparing spelling and reading
 
@@ -97,7 +104,16 @@ def needs_respell(word, reading):
     """reading differs from the spelling at all (or splits a leading-ห cluster: ตระ-หง่าน)"""
     if not reading:
         return False
+    if same_sound(word, reading):
+        return False
     return plain(reading) != plain(word) or bool(re.search(r"-[เแโใไ]?ห[งญนมยรลว]", reading))
+
+
+def same_sound(word, reading):
+    """the respelling only swaps ใ for ไ (ใคร/ไคร, ใจดี/ไจดี) or adds ็ (เงิน/เงิ็น): the sound is the same, and the
+    respelt form only confuses a voice model that knows the real word (MiniMax H3, 2026-11-16)"""
+    norm = lambda x: plain(x).replace("ใ", "ไ").replace("็", "")
+    return norm(reading) == norm(word) and plain(reading) != plain(word)
 
 
 def linking_syllable(reading):
@@ -136,6 +152,23 @@ def is_irregular(word, reading, common=()):
 
 
 # ------------------------------------------------------------------ data files
+
+
+def _read_fixes(path):
+    """voice_fixes.txt: 'word = "text"' (quotes keep leading/trailing spaces) -> [(word, text)], longest word first"""
+    out = {}
+    if os.path.isfile(path):
+        with io.open(path, encoding="utf-8-sig") as fh:
+            for ln in fh.read().splitlines():
+                if not ln.strip() or ln.lstrip().startswith("#") or "=" not in ln:
+                    continue
+                k, _, v = ln.partition("=")
+                v = v.strip()
+                m = re.match(r'"([^"]*)"', v)
+                v = m.group(1) if m else re.sub(r"\s+#.*$", "", v).strip()
+                if k.strip() and v:
+                    out[k.strip()] = v
+    return sorted(out.items(), key=lambda kv: -len(kv[0]))
 
 
 def _read_pairs(path, keep_spaces=False):
@@ -446,7 +479,10 @@ def pali_reading(word):
 
 
 class Reader:
-    def __init__(self, data_dir=DATA, use_pali=False, my_file=None):
+    def __init__(self, data_dir=DATA, use_pali=False, my_file=None, style="c", repeat=False, fix_file=None):
+        if style not in STYLES:
+            raise ValueError("style must be one of: %s" % ", ".join(STYLES))
+        self.style = style
         self.dict = _read_pairs(os.path.join(data_dir, "thai_readings.txt"))
         if not self.dict:
             raise FileNotFoundError("thai_readings.txt missing or empty in %s - reinstall or run tools/build_data.py"
@@ -457,12 +493,20 @@ class Reader:
         ranked = _read_list(os.path.join(data_dir, "common_words.txt"))
         self.rank = {w: i for i, w in enumerate(ranked)}
         self.common = set(ranked)
-        self.keep = set(_read_list(os.path.join(data_dir, "keep_as_written.txt")))
+        # word -> the styles it is kept as written in ("พุทธศักราช [c]" = style C only; no tag = every style)
+        self.keep_styles = {}
+        for ln in _read_list(os.path.join(data_dir, "keep_as_written.txt")):
+            w, _, tag = ln.partition("[")
+            self.keep_styles[w.strip()] = set(re.findall(r"\w+", tag)) if tag else set(STYLES)
+        self._keep = {s: {w for w, st in self.keep_styles.items() if s in st} for s in STYLES}
         ab = _read_pairs(os.path.join(data_dir, "abbreviations.txt"), keep_spaces=True)
         self.abbrev = dict(sorted(ab.items(), key=lambda kv: -len(kv[0])))
+        self.abbrev_solid = {k: v.replace("-", "") for k, v in self.abbrev.items()}     # ฯพณฯ = พะนะท่าน
         self.use_pali = use_pali
         self.pali = _read_pairs(os.path.join(data_dir, "pali_thai_script.txt")) if use_pali else {}
         self.my_file = my_file or MY_FILE
+        self.repeat = repeat
+        self.fixes = _read_fixes(fix_file or (FIX_FILE if data_dir == DATA else os.path.join(data_dir, "voice_fixes.txt")))
         self._common_cache = {}
         self.reload_my()
 
@@ -473,11 +517,16 @@ class Reader:
         # real words (ราชบัณฑิตยสถาน). Bound-only stems (วร, ทัศน) are words for splitting, read as written.
         letters = re.compile("^[%s]+$" % CONS)
         names = re.compile("^(?:[%s]อ-)*[%s]อ$" % (CONS, CONS))
-        self.words = {w for w in set(self.dict) | set(self.pali) | self.keep | set(self.bound)
+        self.words = {w for w in set(self.dict) | set(self.pali) | set(self.keep_styles) | set(self.bound)
                       if len(w) > 1 and RUN.fullmatch(w)
                       and not (letters.match(w) and names.match(self.dict.get(w, "")))} \
             | {w for w in self.my if RUN.fullmatch(w)}
         self.maxlen = max(len(w) for w in self.words)
+
+    @property
+    def keep(self):
+        """words left as written in the current style (data/keep_as_written.txt)"""
+        return self._keep[self.style]
 
     # ---- word classes
     def is_common(self, w):
@@ -591,15 +640,46 @@ class Reader:
             if MARKUP.fullmatch(part or "x"):
                 out.append(part)
                 continue
+            if self.repeat:
+                part = self.expand_repeat(part)
+            part, held, ch0 = self._hold_fixes(part)
             r, ch = self._read_plain(part, mode, numbers)
+            for i, fix in enumerate(held):                     # voice fixes go back in exactly as written;
+                ph = chr(0xE000 + i)                           # a fix's own edge space replaces the text's space
+                if fix.endswith(" "):
+                    r = re.sub(ph + " +", ph, r)
+                if fix.startswith(" "):
+                    r = re.sub(" +" + ph, ph, r)
+                r = r.replace(ph, fix)
             out.append(r)
-            changes += ch
+            changes += ch0 + ch
         return "".join(out), changes
 
+    def _hold_fixes(self, text):
+        """data/voice_fixes.txt: owner-verified text sent to the voice model EXACTLY (spaces included), in every
+        mode and style. Longest first; each hit becomes a private-use placeholder the reader passes through."""
+        held, changes = [], []
+        for w, fix in self.fixes:
+            if w in text:
+                ph = chr(0xE000 + len(held))
+                held.append(fix)
+                text = text.replace(w, ph)
+                changes.append({"word": w, "reading": fix, "source": "voice-fix", "why": "heard-verified"})
+        return text, held, changes
+
+    def expand_repeat(self, text):
+        """ๆ -> the word before it written again (จริง ๆ -> จริงจริง): MiniMax H3 often says the word once.
+        Only the last dictionary word of the run is repeated (ใครอยู่ข้างเราจริง ๆ -> ...จริงจริง)."""
+        def rep(m):
+            toks = self.segment(m.group(1))
+            return m.group(1) + (toks[-1][0] if toks else "")
+        return re.sub("(%s)[  ]*ๆ" % RUN.pattern, rep, text)
+
     def _read_plain(self, text, mode, numbers):
+        solid = self.style == "dict"
         text = text.replace(NUM_OPEN, "").replace(NUM_CLOSE, "")
         if numbers:
-            text = numbers_to_words(text, self.abbrev, mark=True)
+            text = numbers_to_words(text, self.abbrev_solid if solid else self.abbrev, mark=True)
         out, changes = [], []
         pieces = []                                            # (text, protected)
         for seg in re.split("(%s[^%s]*%s)" % (NUM_OPEN, NUM_CLOSE, NUM_CLOSE), text):
@@ -614,6 +694,7 @@ class Reader:
             if self.use_pali and re.search("[ฺํ]", chunk) and chunk not in self.words:
                 pr = self.pali.get(chunk) or pali_reading(chunk)     # whole Pali word, before it is split up
                 if pr:
+                    pr = pr.replace("-", "") if solid else pr
                     out.append(pr)
                     changes.append({"word": chunk, "reading": pr, "source": "pali-rule", "why": "pali"})
                     continue
@@ -642,21 +723,26 @@ class Reader:
                         # it could be the first part of a compound but we cannot tell: never its free form, which
                         # would drop the linking syllable if it is one (บรม+ราชานุสาวรีย์, ภูมิ+พล) -> as written
                         r = None
+                if r and solid and r.replace("-", "") == tok:
+                    r = None                                    # only the "-" differed (ตระ-หง่าน): as written
                 if r:
                     parts.append((r, True))
-                    changes.append({"word": tok, "reading": r, "source": src, "why": why})
+                    changes.append({"word": tok, "reading": r.replace("-", "") if solid else r, "source": src,
+                                    "why": why})
                 else:
                     parts.append((tok, False))
+            run = []
             for k, (p, conv) in enumerate(parts):              # style C: "-" between a respelled word and its
                 if k and (conv or parts[k - 1][1]):            # Thai neighbours in the same run (พระ-อุ-โบ-สด)
-                    prev = out[-1] if out else ""
-                    a, b = prev.split("-")[-1], p.split("-")[0]
+                    a, b = run[-1].split("-")[-1], p.split("-")[0]
                     if conv and parts[k - 1][1] and a == b and a.endswith("ะ"):
                         p = p[len(b) + 1:] if "-" in p else ""  # บอ-รม-มะ + มะ-หา -> one มะ
                         if not p:
                             continue
-                    out.append("-")
-                out.append(p)
+                    run.append("-")
+                run.append(p)
+            run = "".join(run)                                  # a Thai run: every "-" in it is a syllable mark
+            out.append(run.replace("-", "") if solid else run)
         return "".join(out), changes
 
     # ---- files: same layout, Thai text only
@@ -784,12 +870,17 @@ def looks_like_path(s):
 def _menu(R, mode, numbers):
     try:
         while True:
-            print("\n==== thai_read %s - Thai text -> reading (style C) ====" % __version__)
+            other = "c" if R.style == "dict" else "dict"
+            print("\n==== thai_read %s - Thai text -> reading (%s) ====" % (__version__, STYLES[R.style]))
             print("  [1] word / sentence -> reading")
             print("  [2] file -> <name>_อ่าน<ext> (.txt .srt .tsv .json .jsonl)")
             print("  [3] teach a reading (saved in data/my_readings.txt)")
+            print("  [S] switch to %s (%s)" % (STYLES[other], "ค่า-ทำ-เนียม" if other == "c" else "ค่าทำเนียม"))
             print("  [Q] quit")
             c = input("> ").strip().lower()
+            if c == "s":
+                R.style = other
+                continue
             if c == "1":
                 while True:
                     t = input("\ntext (empty = back): ").strip()
@@ -839,7 +930,13 @@ def main(argv=None):
                          "from the spelling · all: every dictionary word in style C")
     ap.add_argument("--pali", action="store_true", help="also read Pali written in Thai script (rule-based)")
     ap.add_argument("--no-numbers", action="store_true", help="leave digits, times and abbreviations alone")
+    ap.add_argument("--style", choices=tuple(STYLES), default=(os.environ.get("THAI_READ_STYLE") or "c").strip().lower(),
+                    help="c (default): syllables joined by - (ค่า-ทำ-เนียม) · dict: the dictionary reading written "
+                         "solid, no - (ค่าทำเนียม). Default from the environment variable THAI_READ_STYLE")
     ap.add_argument("--keys", help="JSON keys or TSV header names (or column numbers) to convert, comma separated")
+    ap.add_argument("--repeat", action="store_true", help="write ๆ out as the word again (จริง ๆ -> จริงจริง)")
+    ap.add_argument("--h3", action="store_true", help="the owner's MiniMax H3 setting: --style dict --mode changed "
+                         "--repeat (data/voice_fixes.txt and keep_as_written.txt always apply)")
     ap.add_argument("--teach", nargs=2, metavar=("WORD", "READING"))
     ap.add_argument("--menu", action="store_true", help="interactive menu (the default when run with no arguments "
                                                           "from a terminal)")
@@ -852,8 +949,12 @@ def main(argv=None):
         ap.error("--json works with --text or --stdin")
     if a.keys and not a.files:
         ap.error("--keys works with .json / .jsonl / .tsv files")
+    if a.style not in STYLES:                               # argparse does not check a default taken from the env
+        ap.error("THAI_READ_STYLE must be one of: %s (got '%s')" % (", ".join(STYLES), a.style))
     try:
-        R = Reader(use_pali=a.pali)
+        if a.h3:
+            a.style, a.mode, a.repeat = "dict", "changed", True
+        R = Reader(use_pali=a.pali, style=a.style, repeat=a.repeat)
     except FileNotFoundError as e:
         print("error: %s" % e, file=sys.stderr)
         return 3

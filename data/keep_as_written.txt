@@ -1,9 +1,28 @@
 # Words the reader leaves AS WRITTEN even though the dictionary respells them.
 # Add a word here when a voice model reads the respelling worse than the original spelling.
-# One word per line; text after # is a note.
+# One word per line; text after # is a note. A tag after the word limits it to one output style:
+#   word [c]      kept only in style C ("-");  dictionary style (--style dict) gets the dictionary reading
+#   word [dict]   kept only in dictionary style
 ทรง        # respelled "ซง" was heard as "สอง" on MiniMax H3 (2026-09-28); the model reads ทรง correctly as written
-พุทธศักราช      # MiniMax H3 says "...กะ-ราด" for every respelling (หราด, หร่าด, หฺราด, หลาด); written word = "หราด" (2026-10-02)
-คริสต์ศักราช    # same ending as พุทธศักราช - kept as written for the same reason (not separately tested)
-คริสตศักราช     # same
-จุลศักราช       # same
-มหาศักราช       # same
+# era names: in style C every respelling (พุด-ทะ-สัก-กะ-หราด, หร่าด, หฺราด, หลาด) came out "...กะ-ราด" on MiniMax H3
+# (2026-10-02). Dictionary style writes them solid as the owner asked (2026-10-23: "-" makes MiniMax drag the sound):
+# พุทธศักราช -> พุดทะสักกะหราด
+พุทธศักราช   [c]
+คริสต์ศักราช  [c]   # same ending as พุทธศักราช - kept as written for the same reason (not separately tested)
+คริสตศักราช   [c]   # same
+จุลศักราช     [c]   # same
+มหาศักราช     [c]   # same
+# Everyday words the dictionary respells into rare forms (mode changed): ก็ -> เก้าะ, ได้ -> ด้าย, ห้า -> ฮ่า,
+# ข้าง -> ค่าง, บ้าง -> บั้ง, อยู่ -> หยู่, อย่า -> หย่า. MiniMax H3 already says them right as written (5 Thai podcast
+# clips, Whisper + owner, 2026-11-16); the respelt forms were not rendered. ใ/ไ and added ็ are skipped by rule.
+ก็
+ก็ได้
+ได้
+ได้ดี
+ห้า
+ข้าง
+บ้าง
+อยู่
+อย่า
+ภายใน
+ขอให้

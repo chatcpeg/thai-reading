@@ -1,0 +1,14 @@
+# Voice fixes - text sent to the voice model EXACTLY as written here, picked BY EAR by the owner.
+# They win over everything (dictionary, my_readings, keep list) in every mode and style.
+# Subtitles must keep the original spelling: these only change what the voice model reads.
+#
+# Format:  spelling = "text to send"      quotes keep a leading/trailing space; text after # is a note
+# Longest spelling wins. A fix may hold spaces (a space can make the model close a final consonant).
+#
+# How a fix is chosen (owner rule 2026-11-16): when the owner hears a word wrong, render 3-4 spellings of JUST that
+# word, 2 takes each with the same seeds, audio only (Infuencer\py\word_variants.py), the owner picks one by ear,
+# and only the pick goes here. Never add a guess that nobody listened to.
+
+# MiniMax H3, Mint podcast voice: "ประเภทนึง" -> "ประเทศหนึ่ง"; "ประเพดนึง" -> "ประ เพ่ นึง" (final ด lost).
+# Owner picked "ประเพด นึง" take 2 (word_tests\prapet, 2026-11-16). Covers ประเภทนี้, ประเภทไหน ... too.
+ประเภท = "ประเพด "

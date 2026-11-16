@@ -267,6 +267,77 @@ class Pali(unittest.TestCase):
         self.assertEqual(rp.read("เมตฺตา")[0], "เม็ต-ตา")
 
 
+RD = T.Reader(my_file=os.path.join(tempfile.mkdtemp(), "my.txt"), style="dict")
+
+
+def rd(s, **k):
+    return RD.read(s, **k)[0]
+
+
+class DictStyle(unittest.TestCase):
+    """--style dict: the dictionary reading written solid, no "-" (the data stays in style C)"""
+    def test_readme_examples(self):
+        for s_, want in [("พระอุโบสถ", "พระอุโบสด"), ("ค่าธรรมเนียม 200 บาท", "ค่าทำเนียม สองร้อย บาท"),
+                         ("พระพุทธศาสนา", "พระพุดทะสาดสะหนา"), ("ราชการ", "ราดชะกาน"), ("ลด 50%", "ลด ห้าสิบ เปอเซ็น"),
+                         ("ทศวรรษ 1970", "ทดสะวัด หนึ่งพันเก้าร้อยเจ็ดสิบ"),
+                         ("รศ.ดร.สมชาย", "รองสาดตราจาน ด๊อกเต้อ สมชาย"),
+                         ("ร.ศ. 112", "รัดตะนะโกสินสก หนึ่งร้อยสิบสอง"), ("ฯพณฯ", "พะนะท่าน"),
+                         ("ผู้ใหญ่ ร้านอาหาร", "ผู้ใหญ่ ร้านอาหาร")]:
+            self.assertEqual(rd(s_), want, s_)
+
+    def test_dash_only_change_stays_as_written(self):
+        out, ch = RD.read("พระปรางค์สูงตระหง่าน")
+        self.assertEqual(out, "พระปรางสูงตระหง่าน")
+        self.assertEqual([(c["word"], c["reading"]) for c in ch], [("ปรางค์", "ปราง")])
+        self.assertEqual(RD.read("ตระหง่าน", mode="all"), ("ตระหง่าน", []))
+
+    def test_same_as_style_c_without_the_dashes(self):
+        for s_ in ("พระปรางค์สูงตระหง่าน ค่าธรรมเนียม 200 บาท", "พระบรมมหาราชวัง พระราชฐาน ภูมิพล ทรงพระเจริญ",
+                   "วัดสระเกศราชวรมหาวิหาร สถาปัตยกรรม กาญจนบุรี", "ฯพณฯ นายกรัฐมนตรี รศ.ดร.สมชาย ร.ศ. 112 ลด 50%",
+                   "ไฟส่องสว่าง กล้องถ่ายภาพ กฎแห่งกรรม อร่อย ถ้อยคำ แชมป์ เต็นท์"):
+            for m in ("irregular", "changed", "all"):
+                self.assertEqual(rd(s_, mode=m), re.sub("(?<=[ก-๎])-(?=[ก-๎])", "", r(s_, mode=m)), (s_, m))
+                self.assertIsNone(re.search("[ก-๎]-|-[ก-๎]", rd(s_, mode=m)), (s_, m))
+
+    def test_era_names_get_the_reading(self):
+        # kept as written only in style C ("[c]" in keep_as_written.txt); dictionary style: the reading, solid
+        # (owner 2026-10-23: "-" makes MiniMax drag the sound)
+        self.assertEqual(rd("พ.ศ. 2560"), "พุดทะสักกะหราด สองพันห้าร้อยหกสิบ")
+        self.assertEqual(rd("สร้างเมื่อพ.ศ.2560"), "สร้างเมื่อ พุดทะสักกะหราด สองพันห้าร้อยหกสิบ")
+        self.assertEqual(rd("ค.ศ. 1782"), "คริดสักกะหราด หนึ่งพันเจ็ดร้อยแปดสิบสอง")
+        self.assertEqual(rd("จ.ศ. 1200"), "จุนละสักกะหราด หนึ่งพันสองร้อย")
+        self.assertEqual(rd("พุทธศักราช"), "พุดทะสักกะหราด")
+        self.assertEqual(rd("ทรง ทรงพระเจริญ"), "ทรง ทรงพระเจริญ")        # no tag: kept in every style
+        rr = T.Reader(my_file=os.path.join(tempfile.mkdtemp(), "my.txt"), style="dict")
+        rr.style = "c"                                               # switching style also switches the keep list
+        self.assertEqual(rr.read("พ.ศ. 2560")[0], "พุทธศักราช สองพันห้าร้อยหกสิบ")
+        self.assertIn("ทรง", rr.keep)
+        self.assertIn("พุทธศักราช", rr.keep)
+
+    def test_input_dashes_and_markup_kept(self):
+        self.assertEqual(rd("COVID-19 ระบาด ไป-กลับ"), "COVID-สิบเก้า ระบาด ไป-กลับ")
+        self.assertEqual(rd("<i>พระอุโบสถ</i>"), "<i>พระอุโบสด</i>")
+
+    def test_my_readings_and_pali(self):
+        rr = T.Reader(my_file=os.path.join(tempfile.mkdtemp(), "my.txt"), style="dict")
+        rr.teach("ธรรมเนียม", "ทัม-มะ-เนียม")                       # still saved in style C
+        self.assertEqual(rr.read("ค่าธรรมเนียม")[0], "ค่าทัมมะเนียม")
+        self.assertIn("ทัม-มะ-เนียม", read_bytes(rr.my_file).decode("utf-8"))
+        rp = T.Reader(use_pali=True, my_file=os.path.join(tempfile.mkdtemp(), "m.txt"), style="dict")
+        self.assertEqual(rp.read("เมตฺตา")[0], "เม็ตตา")
+
+    def test_files(self):
+        p = write_bytes(os.path.join(tempfile.mkdtemp(), "a.srt"),
+                        "1\r\n00:00:01,000 --> 00:00:03,000\r\nพระอุโบสถ\r\n\r\n".encode("utf-8"))
+        dst, n = RD.convert_file(p)
+        self.assertEqual(read_bytes(dst).decode("utf-8"), "1\r\n00:00:01,000 --> 00:00:03,000\r\nพระอุโบสด\r\n\r\n")
+        self.assertEqual(n, 1)
+
+    def test_bad_style(self):
+        with self.assertRaises(ValueError):
+            T.Reader(style="x")
+
+
 class Files(unittest.TestCase):
     def setUp(self):
         self.d = tempfile.mkdtemp()
@@ -363,10 +434,24 @@ class Files(unittest.TestCase):
 
 
 class Cli(unittest.TestCase):
-    def run_cli(self, args, stdin=None):
+    def run_cli(self, args, stdin=None, **env):
+        e = dict(os.environ, PYTHONUTF8="1")
+        e.pop("THAI_READ_STYLE", None)
         p = subprocess.run([sys.executable, os.path.join(ROOT, "thai_read.py")] + args, input=stdin,
-                           capture_output=True, env=dict(os.environ, PYTHONUTF8="1"))
+                           capture_output=True, env=dict(e, **env))
         return p.returncode, p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
+
+    def test_style_option_env_and_menu(self):
+        self.assertEqual(self.run_cli(["--text", "พระอุโบสถ", "--style", "dict"])[1].strip(), "พระอุโบสด")
+        rc, out, _ = self.run_cli(["--text", "อุโบสถ", "--json", "--style", "dict"])
+        self.assertEqual((json.loads(out)["reading"], json.loads(out)["changes"][0]["reading"]), ("อุโบสด", "อุโบสด"))
+        self.assertEqual(self.run_cli(["--text", "พระอุโบสถ"], THAI_READ_STYLE="Dict")[1].strip(), "พระอุโบสด")
+        self.assertEqual(self.run_cli(["--text", "พระอุโบสถ", "--style", "c"], THAI_READ_STYLE="dict")[1].strip(),
+                         "พระ-อุ-โบ-สด")
+        self.assertEqual(self.run_cli(["--text", "พระอุโบสถ"], THAI_READ_STYLE="x")[0], 2)
+        rc, out, _ = self.run_cli(["--menu"], stdin="s\n1\nพระอุโบสถ\n\nq\n".encode("utf-8"))
+        self.assertEqual(rc, 0)
+        self.assertIn("reading: พระอุโบสด", out)
 
     def test_json_output(self):
         rc, out, _ = self.run_cli(["--text", "อุโบสถ", "--json"])
@@ -393,6 +478,51 @@ class Cli(unittest.TestCase):
     def test_missing_data_fails_loudly(self):
         with self.assertRaises(FileNotFoundError):
             T.Reader(data_dir=tempfile.mkdtemp())
+
+
+class VoiceH3(unittest.TestCase):
+    """owner rules for MiniMax H3 (2026-11-16): voice fixes, everyday words kept, same-sound skip, ๆ written out"""
+    H = T.Reader(style="dict", repeat=True, my_file=os.path.join(tempfile.mkdtemp(), "my.txt"))
+
+    def h(self, s):
+        return self.H.read(s, mode="changed")[0]
+
+    def test_voice_fix_exact_with_space(self):
+        self.assertEqual(self.h("มีคนประเภทนึง หายไป"), "มีคนประเพด นึง หายไป")
+        self.assertEqual(self.h("คนประเภทนี้"), "คนประเพด นี้")
+        self.assertEqual(self.h("ประเภท ไหน"), "ประเพด ไหน")             # no double space
+        self.assertEqual(r("มีคนประเภทนึง"), "มีคนประเพด นึง")              # every mode and style
+        ch = self.H.read("ประเภทนึง", mode="changed")[1]
+        self.assertEqual(ch[0]["source"], "voice-fix")
+
+    def test_voice_fix_file_format(self):
+        d = tempfile.mkdtemp()
+        f = os.path.join(d, "fx.txt")
+        write_bytes(f, '# note\nกขค = "กอ ขอ "  # x\nง = จ\n'.encode("utf-8"))
+        self.assertEqual(T._read_fixes(f), [("กขค", "กอ ขอ "), ("ง", "จ")])
+
+    def test_everyday_words_kept(self):
+        for w in ["ก็", "ได้", "ห้า", "ข้าง", "บ้าง", "อยู่", "อย่า", "ก็ได้"]:
+            self.assertEqual(self.h(w), w)
+        self.assertEqual(self.h("แต่พอวันที่เราได้ดี มีงาน มีเงิน"), "แต่พอวันที่เราได้ดี มีงาน มีเงิน")
+
+    def test_same_sound_not_respelled(self):
+        self.assertTrue(T.same_sound("ใคร", "ไคร"))
+        self.assertTrue(T.same_sound("เงิน", "เงิ็น"))
+        self.assertFalse(T.same_sound("ปัญหา", "ปัน-หา"))
+        self.assertEqual(self.h("ใครใจดี"), "ใครใจดี")
+        self.assertEqual(self.h("ปัญหา"), "ปันหา")
+
+    def test_repeat_written_out(self):
+        self.assertEqual(self.h("แค่รู้แล้วว่า ใครอยู่ข้างเราจริง ๆ"), "แค่รู้แล้วว่า ใครอยู่ข้างเราจิงจิง")
+        self.assertEqual(self.h("เพื่อน ๆ"), "เพื่อนเพื่อน")
+        self.assertEqual(r("จริง ๆ"), "จริง ๆ")                              # off by default
+
+    def test_cli_h3_preset(self):
+        out = subprocess.run([sys.executable, os.path.join(ROOT, "thai_read.py"), "--h3", "--text",
+                              "ประเภทนึง จริง ๆ ไม่ได้โกรธ"], capture_output=True,
+                             env=dict(os.environ, PYTHONUTF8="1")).stdout.decode("utf-8").strip()
+        self.assertEqual(out, "ประเพด นึง จิงจิง ไม่ได้โกรด")
 
 
 class DataLint(unittest.TestCase):

@@ -3,6 +3,22 @@
 Purpose: before sending Thai narration to a voice model, convert it to the spoken reading (style C, syllables
 joined by "-"). Never put the converted text in subtitles - subtitles keep the original spelling.
 
+## MiniMax H3 (the owner's voice model): always use `--h3`
+
+`python thai_read.py --h3 --text "<thai>"` (or `Reader(style="dict", repeat=True)` + `read(text, mode="changed")`).
+`--h3` = `--style dict --mode changed --repeat`: no hyphens (they make H3 drag), every word whose reading differs,
+ๆ written out (จริง ๆ -> จิงจิง, H3 often says it once). Always active in every mode, no flag needed:
+- `data/voice_fixes.txt` - **owner-picked by ear**, sent verbatim incl. spaces (ประเภท -> "ประเพด "; glued
+  ประเพดนึง lost its final ด). Wins over everything. `changes` source `voice-fix`.
+- `data/keep_as_written.txt` - everyday words H3 already says right (ก็ ได้ ห้า ข้าง บ้าง อยู่ อย่า ...)
+- same-sound respellings are never used (ใ/ไ: ใคร/ไคร; an added ็: เงิน/เงิ็น)
+
+**When the owner says a word sounds wrong** (owner rule 2026-11-16): do not guess one new spelling. Render 3-4
+spellings of just that word (as written / `-` syllables / a space after it / a clearer synonym), 2 takes each with
+the same seeds, audio only, one listening file - e.g. `D:\AntigravityRepo\Infuencer\py\word_variants.py`. The owner
+picks by ear (Whisper cannot hear Thai tones); add ONLY the pick to `data/voice_fixes.txt`, with a note of what was
+heard and which take won. Never add a fix nobody listened to.
+
 **Call Python directly** (`python thai_read.py ...`, or `py -3 thai_read.py ...` on Windows). Do not pass text
 through `ThaiReading.bat`: cmd.exe cannot safely pass arbitrary text that contains `"` together with `& | < > ^`.
 The .bat is for people (menu, drag and drop).
@@ -29,7 +45,13 @@ first run `[Console]::OutputEncoding = $OutputEncoding = [Text.UTF8Encoding]::ne
 `Get-Content -Encoding UTF8 in.txt | python thai_read.py --stdin` after setting the encoding, or `cmd /c "... < in.txt"`.
 
 Options: `--mode irregular|changed|all` (default `irregular` = only misleading spellings), `--pali`
-(rule-based readings of Pali written in Thai script, e.g. ธมฺม), `--no-numbers` (leave digits and abbreviations).
+(rule-based readings of Pali written in Thai script, e.g. ธมฺม), `--no-numbers` (leave digits and abbreviations),
+`--style c|dict` (default `c`, or `$THAI_READ_STYLE`): `dict` writes the same dictionary reading solid, without `-`
+(ค่าทำเนียม สองร้อย บาท, พระอุโบสด, ราดชะกาน); a word whose only change was the `-` (ตระหง่าน) then stays as written and
+is not listed in `changes`. Hyphens already in the input (COVID-19, ไป-กลับ) are kept. The owner found (2026-10-23)
+that with `-` MiniMax drags the sound a little; `c` stays the default so existing callers do not change.
+`--teach` readings are always written with `-`; `dict` removes them on output.
+`data/keep_as_written.txt`: a word tagged `[c]` (the era names) is kept as written in style C only.
 
 ## What the tool already does
 - digits -> Thai words (2560 -> สองพันห้าร้อยหกสิบ; 1,200 -> หนึ่งพันสองร้อย; 35.50 -> สามสิบห้า จุด ห้า ศูนย์)
@@ -41,8 +63,9 @@ Options: `--mode irregular|changed|all` (default `irregular` = only misleading s
 - phone numbers (02-123-4567, 053-248604, 08-1234-5678, 0 2250 5500, (02) 123-4567, +66 ...), hotlines and numbers
   with a leading 0 are read digit by digit; 5-digit postcodes after ไปรษณีย์ or ending an address too
 - era abbreviations are said as the full name, never letter by letter: พ.ศ. -> พุทธศักราช, ค.ศ. -> คริสต์ศักราช,
-  จ.ศ. -> จุลศักราช (kept as written by default: `data/keep_as_written.txt`, because MiniMax H3 says the ending
-  "หราด" right only from the written word - take them out of that file to get พุด-ทะ-สัก-กะ-หราด for other TTS),
+  จ.ศ. -> จุลศักราช (in style C kept as written: `[c]` in `data/keep_as_written.txt`, because MiniMax H3 says the
+  ending "หราด" right only from the written word - take them out of that file to get พุด-ทะ-สัก-กะ-หราด for other
+  TTS; `--style dict` gives the reading solid: พุดทะสักกะหราด, คริดสักกะหราด, จุนละสักกะหราด),
   ร.ศ. -> รัด-ตะ-นะ-โก-สิน-สก; plus `data/abbreviations.txt` (months, units, จ. ต. ถ. ซ., กทม., titles รศ. ผศ. ดร. นพ. ม.ร.ว., ฯลฯ, กรุงเทพฯ ...);
   1-2 letter abbreviations only when they do not touch a Thai letter (ชีวิต. / เข้าชม. stay)
 - words are found by dictionary maximal matching (not substring search); a known word glued to unknown letters
@@ -62,7 +85,7 @@ Options: `--mode irregular|changed|all` (default `irregular` = only misleading s
 ## Library use
 ```python
 import thai_read
-R = thai_read.Reader()                            # Reader(use_pali=True) to add Pali rules
+R = thai_read.Reader()                            # Reader(use_pali=True) to add Pali rules; style="dict" for no "-"
 reading, changes = R.read("ค่าธรรมเนียม 200 บาท")  # -> ("ค่า-ทำ-เนียม สองร้อย บาท", [...])
 dst, n = R.convert_file("script.txt")              # -> ("script_อ่าน.txt", lines changed)
 ```

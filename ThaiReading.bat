@@ -5,7 +5,7 @@ rem   drag files onto this .bat          writes <name>_(read).<ext> beside each 
 rem   ThaiReading.bat --text "..."       one reading (plain text only: cmd breaks on " with & | < > ^)
 rem AI agents / scripts: call  python thai_read.py ...  directly (see AGENTS.md).
 rem Needs Python 3.8+ (py launcher or python on PATH). Standard library only.
-rem Set THAI_READ_NOPAUSE=1 to never wait for a key.
+rem Set THAI_READ_NOPAUSE=1 to never wait for a key. Set THAI_READ_STYLE=dict for dictionary-style readings (no "-").
 setlocal
 (for /f "tokens=2 delims=:." %%a in ('chcp') do set "OLDCP=%%a") <nul
 set "OLDCP=%OLDCP: =%"
