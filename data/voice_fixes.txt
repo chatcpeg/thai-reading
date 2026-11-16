@@ -12,3 +12,11 @@
 # MiniMax H3, Mint podcast voice: "ประเภทนึง" -> "ประเทศหนึ่ง"; "ประเพดนึง" -> "ประ เพ่ นึง" (final ด lost).
 # Owner picked "ประเพด นึง" take 2 (word_tests\prapet, 2026-11-16). Covers ประเภทนี้, ประเภทไหน ... too.
 ประเภท = "ประเพด "
+
+# MiniMax H3, Mint podcast voice: "ข่าวคราว" -> "ข่าว ๆ" (Whisper, pod02 v1). Written "ข่าวคาว" in pod02 v3;
+# owner listened: clear (2026-11-16). Whisper still writes "ข่าว ๆ" - it cannot judge this word.
+ข่าวคราว = "ข่าวคาว"
+
+# MiniMax H3, Mint podcast voice: "ฝากโน่นหน่อย" -> "โน่" (owner) / "โน้ว" (Whisper): the final น is lost.
+# 4 spellings x 2 takes (word_tests\non, 2026-11-16): owner picked "โน้น" (both takes kept the น).
+โน่น = "โน้น"
