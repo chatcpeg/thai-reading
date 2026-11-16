@@ -26,3 +26,6 @@
 อย่า
 ภายใน
 ขอให้
+# Owner picked AS WRITTEN by ear (MiniMax H3, Selin podcast voice, 4 spellings x 2 takes, 2026-11-16) - never respell:
+พลาด       # "พฺลาด" (pinthu) came out "พะ-ลาด"; space / hyphen variants no better (word_tests\phlat)
+เหนื่อย     # a bad take said "เหนื่อ"; space / hyphen variants dropped the ย more often (word_tests\nueai)
